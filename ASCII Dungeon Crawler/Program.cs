@@ -35,8 +35,12 @@ class Program
     static void Game()
     {
         Console.CursorVisible = false;
-        Console.WindowHeight = height + 1;
-        Console.WindowWidth = width + 1;
+        if(Environment.OSVersion.Platform == PlatformID.Win32NT)
+        {
+            Console.WindowHeight = height + 1;
+            Console.WindowWidth = width + 1;
+
+        }
         while (true) 
         {
             InitializeMap();
