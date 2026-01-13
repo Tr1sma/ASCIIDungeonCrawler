@@ -1,17 +1,21 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.IO.Pipelines;
+using System.Runtime.Intrinsics.X86;
 
 class Program
 {
-    static readonly int width = 160;
-    static readonly int height = 50;
+    static readonly int width = 80;
+    static readonly int height = 25;
     static readonly char[,] _map = new char[width, height];
-    static readonly int wallDensity = 15; // Lower is denser
+    static readonly int wallDensity = 5; // Lower is denser
+    static readonly int lootDensity = 20; // Lower is denser
+    static readonly int ConsoleHeight = height + 5;
 
     static readonly char playerSymbol = '@';
     static readonly char wallSymbol = '#';
     static readonly char floorSymbol = '.';
+    static readonly char lootBox = 'X';
 
     static readonly int _playerXstart = 1, _playerYstart = 1;
     static int _playerX = _playerXstart, _playerY = _playerYstart;
@@ -25,6 +29,15 @@ class Program
     static readonly int mapShuffleInterval = 25; // Value is getting Multiplied by frame time (16ms)
     static int cycleCount = 0;
 
+    static string[] instructions = new string[]
+    {
+        "Use W A S D to move the @ symbol to the exit.",
+        "Walls are represented by # symbols.",
+        "Floor is represented by . symbols.",
+        "Lootboxes are represented by X symbols.",
+        "Press [1] to toggle Dynamic mode"
+    };
+
     Random rand = new Random();
 
     static void Main(string[] args)
@@ -34,13 +47,9 @@ class Program
 
     static void Game()
     {
+        Console.BufferHeight = height + 5;
+        Console.BufferWidth = width + instructions.OrderByDescending(x => x.Length).First().ToString().Length + 3;
         Console.CursorVisible = false;
-        if(Environment.OSVersion.Platform == PlatformID.Win32NT)
-        {
-            Console.WindowHeight = height + 1;
-            Console.WindowWidth = width + 1;
-
-        }
         while (true) 
         {
             InitializeMap();
@@ -232,18 +241,11 @@ class Program
     {
         try
         {
-            Console.SetCursorPosition(width + 2, 1);
-            Console.Write("Use W A S D to move the @ symbol to the exit.");
-
-            Console.SetCursorPosition(width + 2, 3);
-            Console.Write("Walls are represented by # symbols.");
-
-            Console.SetCursorPosition(width + 2, 5);
-            Console.Write("Floor is represented by . symbols.");
-
-            Console.SetCursorPosition(width + 2, 7);
-            Console.Write("Press [1] to toggle Dynamic mode");
-
+            for (int i = 0; i < instructions.Length; i++)
+            {
+                Console.SetCursorPosition(width + 2, 1 + i * 2);
+                Console.Write(instructions[i]);
+            }
             Console.SetCursorPosition(_exitPoint.Item1 + 3, _exitPoint.Item2);
             Console.Write("< this is the exit");
         }
