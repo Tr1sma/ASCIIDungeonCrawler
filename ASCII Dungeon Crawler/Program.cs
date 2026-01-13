@@ -81,16 +81,18 @@ class Program
 
     static void HandleInput(ConsoleKey key)
     {
-        int dx = 0, dy = 0;
+        int dx, dy;
 
-        switch (key)
+        if (key == ConsoleKey.D1) dynamicMode = !dynamicMode;
+
+        (dx, dy) = key switch
         {
-            case ConsoleKey.W: dy = -1; break;
-            case ConsoleKey.S: dy = 1; break;
-            case ConsoleKey.A: dx = -1; break;
-            case ConsoleKey.D: dx = 1; break;
-            case ConsoleKey.D1: dynamicMode = !dynamicMode; break;
-        }
+            ConsoleKey.W => (0, -1),
+            ConsoleKey.S => (0, 1),
+            ConsoleKey.A => (-1, 0),
+            ConsoleKey.D => (1, 0),
+            _ => (0, 0)
+        };
 
         MovePlayer(dx, dy);
     }
