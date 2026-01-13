@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Collections.ObjectModel;
-using System.IO.Pipelines;
-using System.Runtime.Intrinsics.X86;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 
 class Program
 {
@@ -9,8 +9,7 @@ class Program
     static readonly int height = 25;
     static readonly char[,] _map = new char[width, height];
     static readonly int wallDensity = 5; // Lower is denser
-    static readonly int lootDensity = 20; // Lower is denser
-    static readonly int ConsoleHeight = height + 5;
+    static readonly int lootDensity = 150; // Lower is denser
 
     static readonly char playerSymbol = '@';
     static readonly char wallSymbol = '#';
@@ -22,7 +21,7 @@ class Program
     static readonly int startLives = 5;
     static int lives = startLives;
 
-    static (int,int) _exitPoint = (width - 2, height - 2);
+    static (int, int) _exitPoint = (width - 2, height - 2);
     static bool reachedExit = false;
 
     static bool dynamicMode = false;
@@ -38,40 +37,109 @@ class Program
         "Press [1] to toggle Dynamic mode"
     };
 
-    Random rand = new Random();
+    static (int, int) WallLootCounter = (0, 0);
+
+    static Random rnd = new Random();
+
+    static NativeConsoleListener _inputListener; 
 
     static void Main(string[] args)
     {
+        _inputListener = new NativeConsoleListener();
         Game();
     }
 
     static void Game()
     {
-        Console.BufferHeight = height + 5;
-        Console.BufferWidth = width + instructions.OrderByDescending(x => x.Length).First().ToString().Length + 3;
-        Console.CursorVisible = false;
-        while (true) 
+        try
+        {
+            Console.BufferHeight = height + 5;
+            Console.BufferWidth = width + instructions.OrderByDescending(x => x.Length).First().Length + 3;
+            Console.CursorVisible = false;
+        }
+        catch { }
+
+        while (true)
         {
             InitializeMap();
             reachedExit = false;
             while (!reachedExit)
             {
-                if (dynamicMode)
-                {
-                    ShuffleMap();
-                }
-                DrawMap();
-                
-                if (Console.KeyAvailable) HandleInput();
+                if (dynamicMode) ShuffleMap();
 
-                System.Threading.Thread.Sleep(16); // ~60 FPS
+                DrawMap();
+                _inputListener.ProcessInput(
+                    onKeyDown: (key) => HandleInput(key),
+                    onResize: () => DrawStaticText()
+                );
+
+                System.Threading.Thread.Sleep(16);
                 cycleCount++;
-                if(cycleCount > mapShuffleInterval)
+                if (cycleCount > mapShuffleInterval) cycleCount = 0;
+            }
+        }
+    }
+
+    static void HandleInput(ConsoleKey key)
+    {
+        int dx = 0, dy = 0;
+
+        switch (key)
+        {
+            case ConsoleKey.W: dy = -1; break;
+            case ConsoleKey.S: dy = 1; break;
+            case ConsoleKey.A: dx = -1; break;
+            case ConsoleKey.D: dx = 1; break;
+            case ConsoleKey.D1: dynamicMode = !dynamicMode; break;
+        }
+
+        MovePlayer(dx, dy);
+    }
+
+    static void MovePlayer(int dx, int dy)
+    {
+        if (dx == 0 && dy == 0) return;
+        try
+        {
+            if (_map[_playerX + dx, _playerY + dy] != '#')
+            {
+                _playerX += dx;
+                _playerY += dy;
+            }
+        }
+        catch (IndexOutOfRangeException)
+        {
+            Console.Clear();
+            _playerX = _playerXstart;
+            _playerY = _playerYstart;
+            reachedExit = true;
+        }
+    }
+
+    static void InitializeMap()
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                if (i == 0 || j == 0 || i == width - 1 || j == height - 1)
+                    _map[i, j] = wallSymbol;
+                else
                 {
-                    cycleCount = 0;
+                    _map[i, j] = (rnd.Next(0, wallDensity) == 0) ? wallSymbol : floorSymbol;
+
+                    _map[i, j] = (rnd.Next(0, lootDensity) == 0) ? lootBox : _map[i, j];
+
+                    if (_map[i, j] == wallSymbol)
+                        WallLootCounter.Item1++;
+                    else if (_map[i, j] == lootBox)
+                        WallLootCounter.Item2++;
                 }
             }
         }
+        _map[_playerX, _playerY] = floorSymbol;
+        _map[width - 1, height - 2] = floorSymbol;
+        DrawStaticText();
     }
 
     static void ShuffleMap()
@@ -83,10 +151,7 @@ class Program
         {
             for (int y = 0; y < height; y++)
             {
-                if (x == 0 || y == 0 || x == width - 1 || y == height - 1)
-                    nextMap[x, y] = wallSymbol;
-                else
-                    nextMap[x, y] = floorSymbol;
+                nextMap[x, y] = (x == 0|| y == 0 || x == width - 1 || y == height - 1) ? wallSymbol : floorSymbol;
             }
         }
 
@@ -116,7 +181,7 @@ class Program
         foreach (var (wx, wy) in walls)
         {
             var validMoves = new System.Collections.Generic.List<(int x, int y)>();
-            
+
             (int dx, int dy)[] directions = { (0, -1), (0, 1), (-1, 0), (1, 0) };
 
             foreach (var dir in directions)
@@ -126,8 +191,8 @@ class Program
 
                 if (nx > 0 && nx < width - 1 && ny > 0 && ny < height - 1)
                 {
-                    if (_map[nx, ny] == floorSymbol && 
-                        nextMap[nx, ny] == floorSymbol && 
+                    if (_map[nx, ny] == floorSymbol &&
+                        nextMap[nx, ny] == floorSymbol &&
                         !(nx == _playerX && ny == _playerY))
                     {
                         validMoves.Add((nx, ny));
@@ -155,29 +220,6 @@ class Program
         }
     }
 
-    static void InitializeMap()
-    {
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < height; j++)
-            {
-                if (i == 0 || j == 0 || i == width - 1 || j == height - 1)
-                    _map[i, j] = wallSymbol;
-                else
-                {
-                    int chance = new Random().Next(0, wallDensity);
-                    if (chance == 0)
-                        _map[i, j] = wallSymbol;
-                    else
-                        _map[i, j] = floorSymbol;
-                }
-            }
-        }
-        _map[_playerX, _playerY] = floorSymbol;
-        _map[width - 1, height - 2] = floorSymbol; // Exit point
-        DrawStaticText();
-    }
-
     static void DrawMap()
     {
         Console.SetCursorPosition(0, 0);
@@ -186,14 +228,8 @@ class Program
         {
             for (int x = 0; x < width; x++)
             {
-                if (x == _playerX && y == _playerY)
-                {
-                    buffer.Append(playerSymbol);
-                }
-                else
-                {
-                    buffer.Append(_map[x, y]);
-                }
+                if (x == _playerX && y == _playerY) buffer.Append(playerSymbol);
+                else buffer.Append(_map[x, y]);
             }
             buffer.AppendLine();
         }
@@ -201,53 +237,18 @@ class Program
         DrawDynamicText();
     }
 
-    static void HandleInput()
-    {
-        var key = Console.ReadKey(true).Key;
-        int dx = 0, dy = 0;
-
-        switch (key)
-        {
-            case ConsoleKey.W: dy = -1; break;
-            case ConsoleKey.S: dy = 1; break;
-            case ConsoleKey.A: dx = -1; break;
-            case ConsoleKey.D: dx = 1; break;
-            case ConsoleKey.D1: dynamicMode = !dynamicMode; break;
-        }
-
-        try
-        {
-            if (_map[_playerX + dx, _playerY + dy] != '#')
-            {
-                _playerX += dx;
-                _playerY += dy;
-            }
-            else
-            {
-                //Do notheing for now
-                //lives--;
-            }
-        }
-        catch (IndexOutOfRangeException)
-        {
-            Console.Clear();
-            _playerX = _playerXstart;
-            _playerY = _playerYstart;
-            reachedExit = true;
-        }
-    }
-
     static void DrawStaticText()
     {
         try
         {
+            if (Console.WindowWidth < width + 2) return;
             for (int i = 0; i < instructions.Length; i++)
             {
                 Console.SetCursorPosition(width + 2, 1 + i * 2);
                 Console.Write(instructions[i]);
             }
             Console.SetCursorPosition(_exitPoint.Item1 + 3, _exitPoint.Item2);
-            Console.Write("< this is the exit");
+            Console.Write("< Exit");
         }
         catch { }
     }
@@ -256,8 +257,14 @@ class Program
     {
         try
         {
+            if (Console.WindowWidth < width + 2) return;
             Console.SetCursorPosition(width + 2, 13);
-            Console.WriteLine($"Lives: {lives}/{startLives}");
+            Console.WriteLine($"Lives: {lives}/{startLives} ");
+
+            Console.SetCursorPosition(width + 2, 15);
+            Console.WriteLine($"Walls: {WallLootCounter.Item1}  ");
+            Console.SetCursorPosition(width + 2, 16);
+            Console.WriteLine($"Lootboxes: {WallLootCounter.Item2}  ");
         }
         catch { }
     }
