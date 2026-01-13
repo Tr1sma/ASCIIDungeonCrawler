@@ -19,46 +19,43 @@ class Program
     static readonly int _playerXstart = 1, _playerYstart = 1;
     static int _playerX = _playerXstart, _playerY = _playerYstart;
     static readonly int startLives = 5;
-    static int lives = startLives;
+    private static readonly int lives = startLives;
 
-    static (int, int) _exitPoint = (width - 2, height - 2);
+    static (int width, int height) _exitPoint = (width - 2, height - 2);
     static bool reachedExit = false;
 
     static bool dynamicMode = false;
     static readonly int mapShuffleInterval = 25; // Value is getting Multiplied by frame time (16ms)
     static int cycleCount = 0;
 
-    static string[] instructions = new string[]
-    {
+    private static readonly string[] instructions =
+    [
         "Use W A S D to move the @ symbol to the exit.",
         "Walls are represented by # symbols.",
         "Floor is represented by . symbols.",
         "Lootboxes are represented by X symbols.",
         "Press [1] to toggle Dynamic mode"
-    };
+    ];
 
-    static (int, int) WallLootCounter = (0, 0);
+    static (int wall, int loot) WallLootCounter = (0, 0);
 
-    static Random rnd = new Random();
+    static readonly Random rnd = new();
 
-    static NativeConsoleListener _inputListener; 
+    static readonly NativeConsoleListener _inputListener = new();
 
-    static void Main(string[] args)
+    static void Main()
     {
-        _inputListener = new NativeConsoleListener();
         Game();
     }
 
     static void Game()
     {
-        try
-        {
+        #if WINDOWS
             Console.BufferHeight = height + 5;
             Console.BufferWidth = width + instructions.OrderByDescending(x => x.Length).First().Length + 3;
-            Console.CursorVisible = false;
-        }
-        catch { }
+        #endif
 
+        Console.CursorVisible = false;
         while (true)
         {
             InitializeMap();
@@ -79,6 +76,8 @@ class Program
             }
         }
     }
+
+
 
     static void HandleInput(ConsoleKey key)
     {
@@ -101,10 +100,17 @@ class Program
         if (dx == 0 && dy == 0) return;
         try
         {
-            if (_map[_playerX + dx, _playerY + dy] != '#')
+            if (_map[_playerX + dx, _playerY + dy] != wallSymbol && _map[_playerX + dx, _playerY + dy] != lootBox)
             {
                 _playerX += dx;
                 _playerY += dy;
+            }
+            if (_map[_playerX + dx, _playerY + dy] == lootBox)
+            {
+                _playerX += dx;
+                _playerY += dy;
+                _map[_playerX, _playerY] = floorSymbol;
+                WallLootCounter.loot--;
             }
         }
         catch (IndexOutOfRangeException)
@@ -131,9 +137,9 @@ class Program
                     _map[i, j] = (rnd.Next(0, lootDensity) == 0) ? lootBox : _map[i, j];
 
                     if (_map[i, j] == wallSymbol)
-                        WallLootCounter.Item1++;
+                        WallLootCounter.wall++;
                     else if (_map[i, j] == lootBox)
-                        WallLootCounter.Item2++;
+                        WallLootCounter.loot++;
                 }
             }
         }
@@ -151,7 +157,7 @@ class Program
         {
             for (int y = 0; y < height; y++)
             {
-                nextMap[x, y] = (x == 0|| y == 0 || x == width - 1 || y == height - 1) ? wallSymbol : floorSymbol;
+                nextMap[x, y] = (x == 0 || y == 0 || x == width - 1 || y == height - 1) ? wallSymbol : floorSymbol;
             }
         }
 
@@ -167,27 +173,25 @@ class Program
             }
         }
 
-        Random rng = new Random();
+        Random rng = new();
         int n = walls.Count;
         while (n > 1)
         {
             n--;
             int k = rng.Next(n + 1);
-            var value = walls[k];
-            walls[k] = walls[n];
-            walls[n] = value;
+            (walls[n], walls[k]) = (walls[k], walls[n]);
         }
 
         foreach (var (wx, wy) in walls)
         {
             var validMoves = new System.Collections.Generic.List<(int x, int y)>();
 
-            (int dx, int dy)[] directions = { (0, -1), (0, 1), (-1, 0), (1, 0) };
+            (int dx, int dy)[] directions = [(0, -1), (0, 1), (-1, 0), (1, 0)];
 
-            foreach (var dir in directions)
+            foreach (var (dx, dy) in directions)
             {
-                int nx = wx + dir.dx;
-                int ny = wy + dir.dy;
+                int nx = wx + dx;
+                int ny = wy + dy;
 
                 if (nx > 0 && nx < width - 1 && ny > 0 && ny < height - 1)
                 {
@@ -202,8 +206,8 @@ class Program
 
             if (validMoves.Count > 0)
             {
-                var move = validMoves[rng.Next(validMoves.Count)];
-                nextMap[move.x, move.y] = wallSymbol;
+                var (x, y) = validMoves[rng.Next(validMoves.Count)];
+                nextMap[x, y] = wallSymbol;
             }
             else
             {
@@ -247,7 +251,7 @@ class Program
                 Console.SetCursorPosition(width + 2, 1 + i * 2);
                 Console.Write(instructions[i]);
             }
-            Console.SetCursorPosition(_exitPoint.Item1 + 3, _exitPoint.Item2);
+            Console.SetCursorPosition(_exitPoint.width + 3, _exitPoint.height);
             Console.Write("< Exit");
         }
         catch { }
@@ -262,9 +266,9 @@ class Program
             Console.WriteLine($"Lives: {lives}/{startLives} ");
 
             Console.SetCursorPosition(width + 2, 15);
-            Console.WriteLine($"Walls: {WallLootCounter.Item1}  ");
+            Console.WriteLine($"Walls: {WallLootCounter.wall}  ");
             Console.SetCursorPosition(width + 2, 16);
-            Console.WriteLine($"Lootboxes: {WallLootCounter.Item2}  ");
+            Console.WriteLine($"Lootboxes: {WallLootCounter.loot}  ");
         }
         catch { }
     }
